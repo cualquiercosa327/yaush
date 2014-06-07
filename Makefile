@@ -1,7 +1,8 @@
 CFILES = $(wildcard *.c)
 TARGETS = $(CFILES:.c=)
 CC = gcc
-CFLAGS = -lreadline -lncurses  -g3
+#CFLAGS = -lreadline -lncurses -Wall -D DEBUG -g3
+CFLAGS = -lreadline -lncurses -Wall
 
 all: $(TARGETS)
 	
