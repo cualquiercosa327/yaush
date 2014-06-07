@@ -37,7 +37,12 @@ char* rl_gets ()
 	return (line_read);
 }
 
-char** parse(char* line_read)
+/* parse()
+   @params: line_read -- the string to be parsed
+            arg -- store the tokens, arg[i] respents the ith token
+   @return: the number of tokens, note that may be some tokens would be NULL
+ */
+char** parse(char* line_read, int* _ntokens)
 {
 	char delim = ' ';
 	int nspace = 0;
@@ -45,13 +50,15 @@ char** parse(char* line_read)
 	// count the number of 'space'
 	for (i = 0; i < strlen(line_read); i++)
 	{
+		//log_debug("%d%c" ,strlen(line_read), line_read[i]);
 		if (line_read[i] == delim)
 			nspace++;
 	}
 	//log_debug("%s %d\n", line_read, nspace);
 	int ntokens = nspace + 1;
 	char **arg = (char**)malloc((ntokens+1)*sizeof(char*));
-	for (i = 0; i < ntokens+1; i++)
+	log_debug("arg : %p\n", arg);
+	for (i = 0; i < ntokens; i++)
 	{
 		arg[i] = (char*)malloc(255*sizeof(char));
 		strcpy(arg[i], "\0");
@@ -60,7 +67,10 @@ char** parse(char* line_read)
 	char *pstr;
 	int offset = 0;
 	int pos = 0;
-	for (i = 0; i < ntokens; i++)
+	// seperate the string using 'space' to get tokens
+	//for (i = 0; i < ntokens; i++)
+	int count = 0;
+	while (offset < strlen(line_read))
 	{
 		pstr = strchr(line_read + offset, delim);
 		if (pstr == NULL)
@@ -70,35 +80,83 @@ char** parse(char* line_read)
 			pos = strlen(line_read) - strlen(pstr);
 			//log_debug("%s\n", pstr);
 		}
-		//log_debug("%d %d\n", offset, pos);
+		log_debug("%d %d\n", offset, pos);
 		if (pos > offset)
-			strncpy(arg[i], line_read + offset, pos - offset);
+		{
+			strncpy(arg[count], line_read + offset, pos - offset);
+			arg[count][pos-offset] = '\0';
+		}
+		else    // this is a 'space', so skip this string
+		{
+			offset = pos+1;
+			continue;
+		}
 		offset = pos+1;
-		log_debug("%s\n", arg[i]);
+		log_debug("%s\n", arg[count]);
+		count++;
 	}
+	log_debug("token count:%d\n", count);
+	for (i = count; i < ntokens; i++)
+	{
+		free(arg[i]);
+		arg[i] = NULL;
+	}
+	*_ntokens = ntokens;
 	return arg;
 }
 
-
-void exec_cmd(char* path, char** arg)
+/* exec_cmd()
+   @params: path -- the path of the command 
+            arg -- the arguments of the command
+            ntokens -- the number of the tokens in arg (actually length(arg) == ntokens+1,
+                       because the last token is always set to NULL)
+   @return: void
+ */
+void exec_cmd(char** arg, int ntokens)
 {
+	int i;
+	for (i = 0 ; i < ntokens; i++)
+	{
+		log_debug("%s\n", arg[i]);
+	}
+	// fork to execute the command
 	if (fork() == 0)
 	{	
-		int ret = execvp(path, arg);
+		// execvp() search $PATH to locate the bin file
+		int ret = execvp(arg[0], arg);
+		// print the error message
 		if (ret < 0)
 			printf("error:%s\n", strerror(errno));
+		// free
+		int i; 
+		for (i = 0; i < ntokens; i++)
+		{
+			if (arg[i] != NULL);
+			{
+				free(arg[i]);
+				arg[i] = NULL;
+			}
+		}
+		free(arg);
+		arg = NULL;
 	}
+	// wait until the child process return
 	wait(NULL);
 }
 
+
 int main(int argc, char** argv)
 {
-	char** arg;
+	char** arg = NULL;
+	int ntokens = 0;
 	while(1)
 	{
+		arg = NULL;
+		ntokens = 0;
 		line_read = rl_gets();
-		arg = parse(line_read);
-		exec_cmd(arg[0], arg);
+		arg = parse(line_read, &ntokens);
+		log_debug("arg : %p\n", arg);
+		exec_cmd(arg, ntokens);
 	}
 	return 0;
 }

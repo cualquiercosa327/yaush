@@ -1,0 +1,7 @@
+2014-06-07 23:15
+	debug:
+	 fix some logic problems in paser
+        (1) ls(space)(space)-l: pay attention to the multi-space between two tokens
+        (2) ls -l(space): eliminate the redutant space at the end of the space. or it will affect the result.
+
+
