@@ -7,9 +7,21 @@
 #include <string.h>
 
 #include "log_debug.h"
+#include "list.h"
 
+#define STRLEN	255
 // A static variable for holding the line.
 char *line_read = (char *)NULL;
+
+
+struct node_cmd {
+	char** arg;		// the arguments list of the command
+	int ntokens;
+	char out[255];		// the output : "stdout" "next" "filename"
+	char in[255];		// the input :  "stdin"  "prev" "filename"
+	struct list_head list;
+};
+
 
 // Read a string, and return a pointer to it.
 // Returns NULL on EOF.
@@ -37,12 +49,12 @@ char* rl_gets ()
 	return (line_read);
 }
 
-/* parse()
+/* lexer()
    @params: line_read -- the string to be parsed
-            arg -- store the tokens, arg[i] respents the ith token
-   @return: the number of tokens, note that may be some tokens would be NULL
+   _ntokens -- (address) the number of tokens, note that may be some tokens would be NULL
+   @return: arg -- store the tokens, arg[i] respents the ith token
  */
-char** parse(char* line_read, int* _ntokens)
+char** lexer(char* line_read, int* _ntokens)
 {
 	char delim = ' ';
 	int nspace = 0;
@@ -55,15 +67,15 @@ char** parse(char* line_read, int* _ntokens)
 			nspace++;
 	}
 	//log_debug("%s %d\n", line_read, nspace);
-	int ntokens = nspace + 1;
-	char **arg = (char**)malloc((ntokens+1)*sizeof(char*));
-	log_debug("arg : %p\n", arg);
+	// tokens = #space + 1; and the additional one is set as NULL to label the end
+	int ntokens = nspace + 2;
+	char **arg = (char**)malloc(ntokens*sizeof(char*));
+	//log_debug("arg : %p\n", arg);
 	for (i = 0; i < ntokens; i++)
 	{
-		arg[i] = (char*)malloc(255*sizeof(char));
+		arg[i] = (char*)malloc(STRLEN*sizeof(char));
 		strcpy(arg[i], "\0");
 	}
-	arg[ntokens] = NULL;
 	char *pstr;
 	int offset = 0;
 	int pos = 0;
@@ -80,7 +92,7 @@ char** parse(char* line_read, int* _ntokens)
 			pos = strlen(line_read) - strlen(pstr);
 			//log_debug("%s\n", pstr);
 		}
-		log_debug("%d %d\n", offset, pos);
+		//log_debug("%d %d\n", offset, pos);
 		if (pos > offset)
 		{
 			strncpy(arg[count], line_read + offset, pos - offset);
@@ -95,30 +107,129 @@ char** parse(char* line_read, int* _ntokens)
 		log_debug("%s\n", arg[count]);
 		count++;
 	}
-	log_debug("token count:%d\n", count);
+	//log_debug("token count:%d\n", count);
 	for (i = count; i < ntokens; i++)
 	{
 		free(arg[i]);
 		arg[i] = NULL;
 	}
 	*_ntokens = ntokens;
+	//log_debug("The end of lexer\n");
 	return arg;
 }
 
+void free_memory(char** arg, int ntokens)
+{
+	int i; 
+	for (i = 0; i < ntokens; i++)
+	{
+		if (arg[i] != NULL);
+		{
+			free(arg[i]);
+			arg[i] = NULL;
+		}
+	}
+	free(arg);
+	arg = NULL;
+}
+
+struct list_head* parser(char** arg, int ntokens)
+{
+	int i;
+	int pos = 0;
+	int prevpos = 0;
+	struct list_head *head = (struct list_head*)malloc(sizeof(struct list_head));
+	int count = 0;
+	INIT_LIST_HEAD(head);
+	while (pos < ntokens)
+	{
+		// skip the null token
+		//if (arg[pos] == NULL && pos < ntokens - 1)
+		//{
+		//	pos++;
+		//	continue;	
+		//}
+		log_debug("%s\n", arg[pos]);
+		// find the position of pipes - '|' 
+		if (arg[pos] == NULL || strcmp(arg[pos], "|") == 0)
+		{
+			// if this is the last token
+			//if (pos == ntokens - 1)
+			//	pos += 1;
+			// malloc for node
+			struct node_cmd *node = (struct node_cmd*)malloc(sizeof(struct node_cmd));
+			strcpy(node->out, "next");
+			strcpy(node->in , "stdin");
+			// malloc
+			char **cmdarg = (char**)malloc((pos-prevpos+1)*sizeof(char*));
+			node->arg = cmdarg;
+			for (i = 0; i < pos - prevpos + 1; i++)
+			{
+				cmdarg[i] = (char*)malloc(STRLEN*sizeof(char));
+				strcpy(cmdarg[i], "\0");
+			}
+			node->ntokens = pos - prevpos + 1;
+			//log_debug("%d-%d\n", prevpos, pos);
+			// prevpos ~ pos : one command
+			i = prevpos;
+			count = 0;
+			while (i < pos)
+			{
+				//log_debug("%s\n", arg[i]);
+				// output redirection
+				if (strcmp(arg[i], ">") == 0)
+				{
+					if (i+1 < pos)
+						strcpy(node->out, arg[++i]);
+				}
+				// input redirection
+				else if (strcmp(arg[i], "<") == 0)
+				{
+					if (i+1 < pos)
+						strcpy(node->in, arg[++i]);
+				}
+				else
+				{
+					strcpy(cmdarg[count], arg[i]);
+					log_debug("cmdarg[%d] = %s\n", count, cmdarg[count]);
+					count++;
+				}
+				i++;	
+			}
+			//log_debug("count:%d tokens:%d\n", count, node->ntokens);
+			// set the remaining tokens to NULL
+			for (i = count; i < node->ntokens; i++)
+			{
+				free(cmdarg[i]);
+				cmdarg[i] = NULL;
+			}
+			prevpos = pos+1;
+			// add this node to the list
+			list_add(&node->list, head);
+			if (arg[pos] == NULL)
+				break;
+		}
+		pos++;
+	}
+	free_memory(arg, ntokens);
+	return head;
+}
+
+
 /* exec_cmd()
    @params: path -- the path of the command 
-            arg -- the arguments of the command
-            ntokens -- the number of the tokens in arg (actually length(arg) == ntokens+1,
-                       because the last token is always set to NULL)
+   arg -- the arguments of the command
+   ntokens -- the number of the tokens in arg (actually length(arg) == ntokens+1,
+   because the last token is always set to NULL)
    @return: void
  */
 void exec_cmd(char** arg, int ntokens)
 {
-	int i;
-	for (i = 0 ; i < ntokens; i++)
-	{
-		log_debug("%s\n", arg[i]);
-	}
+	/*int i;
+	  for (i = 0 ; i < ntokens; i++)
+	  {
+	  log_debug("%s\n", arg[i]);
+	  }*/
 	// fork to execute the command
 	if (fork() == 0)
 	{	
@@ -126,22 +237,70 @@ void exec_cmd(char** arg, int ntokens)
 		int ret = execvp(arg[0], arg);
 		// print the error message
 		if (ret < 0)
-			printf("error:%s\n", strerror(errno));
+			//printf("error:%s\n", strerror(errno));
+			perror("error");
 		// free
-		int i; 
-		for (i = 0; i < ntokens; i++)
-		{
-			if (arg[i] != NULL);
-			{
-				free(arg[i]);
-				arg[i] = NULL;
-			}
-		}
-		free(arg);
-		arg = NULL;
+		free_memory(arg, ntokens);
+		exit(0);
 	}
 	// wait until the child process return
 	wait(NULL);
+}
+
+void exec_cmd2(struct list_head *head)
+{
+	int forkstatus = 1;
+	int i;
+	int pnum = 0;
+	struct list_head *plist;
+	// count the number of the command
+	list_for_each(plist, head)
+		pnum++;
+	// pipe descriptor
+	int **fd;
+	fd = (int**)malloc((pnum+1)*sizeof(int*));
+	for (i = 0; i < pnum+1; i++)
+	{
+		fd[i] = (int*)malloc(2*sizeof(int)); 
+		pipe(fd[i]);
+	}
+	int idx = 0;
+	// loop for every command
+	list_for_each(plist, head)
+	{
+		struct node_cmd *node = list_entry(plist, struct node_cmd, list);	
+		//log_debug("tokens:%d\n", node->ntokens);
+	  	for (i = 0 ; i < node->ntokens; i++)
+		{
+			log_debug("%p %s\n", node, node->arg[i]);
+		}
+		// fork to execute the command
+		forkstatus = fork();
+		if (forkstatus == 0)
+		{
+			//if (strcmp(node->in, "prev") == 0)
+			//	dup2(fd[idx][0], STDIN_FILENO);
+			//else if()
+			// execvp() search $PATH to locate the bin file
+			int ret = execvp(node->arg[0], node->arg);
+			// print the error message
+			if (ret < 0)
+				//printf("error:%s\n", strerror(errno));
+				perror("error");
+			log_debug("subprocess return\n");
+			//exit(0);
+		}
+		else
+		{
+			// free
+			free_memory(node->arg,node->ntokens);
+		}
+		idx++;
+	}
+	// wait until the child process return
+	//if (forkstatus > 0)
+	for (i = 0; i < pnum; i++)
+		wait(NULL);
 }
 
 
@@ -149,14 +308,20 @@ int main(int argc, char** argv)
 {
 	char** arg = NULL;
 	int ntokens = 0;
+	struct list_head *head;
 	while(1)
 	{
 		arg = NULL;
 		ntokens = 0;
 		line_read = rl_gets();
-		arg = parse(line_read, &ntokens);
-		log_debug("arg : %p\n", arg);
-		exec_cmd(arg, ntokens);
+		if (line_read && *line_read)
+		{
+			arg = lexer(line_read, &ntokens);
+			//exec_cmd(arg, ntokens);
+			//log_debug("arg : %p\n", arg);
+			head = parser(arg, ntokens);
+			exec_cmd2(head);
+		}
 	}
 	return 0;
 }
