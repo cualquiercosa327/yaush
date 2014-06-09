@@ -5,6 +5,8 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/wait.h>
 
 #include "log_debug.h"
 #include "list.h"
@@ -158,8 +160,14 @@ struct list_head* parser(char** arg, int ntokens)
 			//	pos += 1;
 			// malloc for node
 			struct node_cmd *node = (struct node_cmd*)malloc(sizeof(struct node_cmd));
-			strcpy(node->out, "next");
-			strcpy(node->in , "stdin");
+			if (arg[pos] == NULL)
+				strcpy(node->out, "stdout");
+			else
+				strcpy(node->out, "next");
+			if (prevpos == 0)
+				strcpy(node->in , "stdin");
+			else
+				strcpy(node->in, "prev");
 			// malloc
 			char **cmdarg = (char**)malloc((pos-prevpos+1)*sizeof(char*));
 			node->arg = cmdarg;
@@ -257,12 +265,18 @@ void exec_cmd2(struct list_head *head)
 	list_for_each(plist, head)
 		pnum++;
 	// pipe descriptor
-	int **fd;
-	fd = (int**)malloc((pnum+1)*sizeof(int*));
-	for (i = 0; i < pnum+1; i++)
+	int **fd = NULL;
+	if (pnum > 1)
 	{
-		fd[i] = (int*)malloc(2*sizeof(int)); 
-		pipe(fd[i]);
+		fd = (int**)malloc((pnum-1)*sizeof(int*));
+		for (i = 0; i < pnum-1; i++)
+		{
+			fd[i] = (int*)malloc(2*sizeof(int)); 
+			int flag= pipe(fd[i]);
+			log_debug("pipe return:%d\n",flag);
+			log_debug("fd[%d]:%d %d\n", i, fd[i][0], fd[i][1]);
+			
+		}
 	}
 	int idx = 0;
 	// loop for every command
@@ -272,23 +286,50 @@ void exec_cmd2(struct list_head *head)
 		//log_debug("tokens:%d\n", node->ntokens);
 	  	for (i = 0 ; i < node->ntokens; i++)
 		{
-			log_debug("%p %s\n", node, node->arg[i]);
+			log_debug("%p %s %s %s\n", node, node->arg[i], node->in, node->out);
 		}
 		// fork to execute the command
 		forkstatus = fork();
 		if (forkstatus == 0)
 		{
-			//if (strcmp(node->in, "prev") == 0)
-			//	dup2(fd[idx][0], STDIN_FILENO);
-			//else if()
-			// execvp() search $PATH to locate the bin file
+			// input
+			if (strcmp(node->in, "prev") == 0)
+			{
+				close(STDIN_FILENO);
+				dup2(fd[idx][0], STDIN_FILENO);
+				close(fd[idx][1]);
+				close(fd[idx][0]);
+			}
+			else if(strcmp(node->in, "stdin") != 0)
+			{
+				int fp = open(node->in, O_RDONLY);
+				dup2(fp, STDIN_FILENO);
+			}
+			log_debug("%p input:%d\n", node, STDIN_FILENO);
+			
+			// output
+			if (strcmp(node->out, "next") == 0)
+			{
+				close(STDOUT_FILENO);
+				dup2(fd[idx-1][1], STDOUT_FILENO);
+				close(fd[idx-1][0]);
+				close(fd[idx-1][1]);
+			}
+			else if(strcmp(node->out, "stdout") != 0)
+			{
+				int fp = open(node->out, O_WRONLY);
+				dup2(fp, STDOUT_FILENO);
+			}
+		        //execvp() search $PATH to locate the bin file
 			int ret = execvp(node->arg[0], node->arg);
+			
 			// print the error message
 			if (ret < 0)
+			{
 				//printf("error:%s\n", strerror(errno));
 				perror("error");
-			log_debug("subprocess return\n");
-			//exit(0);
+				exit(-1);
+			}
 		}
 		else
 		{
@@ -297,10 +338,20 @@ void exec_cmd2(struct list_head *head)
 		}
 		idx++;
 	}
+	
 	// wait until the child process return
-	//if (forkstatus > 0)
-	for (i = 0; i < pnum; i++)
-		wait(NULL);
+	if (forkstatus > 0)
+	{
+		// close the pipe in the parent process
+		for (i = 0; i < pnum-1; i++)
+		{
+			close(fd[i][0]);
+			close(fd[i][1]);
+		}
+		// wait until all the process return
+		for (i = 0; i < pnum; i++)
+			wait(NULL);	
+	}
 }
 
 
