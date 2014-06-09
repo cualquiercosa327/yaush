@@ -10,6 +10,8 @@
 
 #include "log_debug.h"
 #include "list.h"
+#include "shortcut_signal.h"
+#include "custom_command.h"
 
 #define STRLEN	255
 // A static variable for holding the line.
@@ -319,6 +321,10 @@ void exec_multicmd(struct list_head *head)
 		{
 			log_debug("%p %s %s %s\n", node, node->arg[i], node->in, node->out);
 		}
+		
+		int ret = execute_cust_cmd(node->arg[0], node->arg);
+		if (ret == 1)
+			continue;
 		// fork to execute the command
 		forkstatus = fork();
 		if (forkstatus == 0)
@@ -348,17 +354,17 @@ void exec_multicmd(struct list_head *head)
 			}
 			else if(strcmp(node->out, "stdout") != 0)
 			{
-				int fp = open(node->out, O_WRONLY);
+				int fp = open(node->out, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 				dup2(fp, STDOUT_FILENO);
 			}
 		        //execvp() search $PATH to locate the bin file
-			int ret = execvp(node->arg[0], node->arg);
+			ret = execvp(node->arg[0], node->arg);
 			
 			// print the error message
 			if (ret < 0)
 			{
 				//printf("error:%s\n", strerror(errno));
-				perror("error");
+				printf("%s:%s\n", node->arg[0], strerror(errno));
 				exit(-1);
 			}
 		}
@@ -386,6 +392,11 @@ int main(int argc, char** argv)
 	char** arg = NULL;
 	int ntokens = 0;
 	struct list_head *head;
+	if (signal(SIGINT, handle_signals) == SIG_ERR) 
+	{
+    		printf("failed to register interrupts with kernel\n");
+  	}
+	while ( sigsetjmp( ctrlc_buf, 1 ) != 0 );
 	while(1)
 	{
 		arg = NULL;
