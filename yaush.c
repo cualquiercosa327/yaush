@@ -120,7 +120,12 @@ char** lexer(char* line_read, int* _ntokens)
 	return arg;
 }
 
-void free_memory(char** arg, int ntokens)
+/* free_string()
+ * @params: arg -- the pointer of the string list
+	    ntokens -- the number of string in the list
+   @return: void
+ */
+void free_string(char** arg, int ntokens)
 {
 	int i; 
 	for (i = 0; i < ntokens; i++)
@@ -135,6 +140,28 @@ void free_memory(char** arg, int ntokens)
 	arg = NULL;
 }
 
+/* free_list()
+ * @params: head -- the pointer of the list
+ * @return: void
+ */
+void free_list(struct list_head *head)
+{
+	struct list_head *plist, *n;	
+	list_for_each_safe(plist, n, head)
+	{
+		struct node_cmd *node = list_entry(plist, struct node_cmd, list);
+		free_string(node->arg,node->ntokens);
+		list_del(&node->list);
+		node = NULL;
+	}
+	head = NULL;
+}
+
+/* parser()
+ * @params: arg -- arguments list
+	    ntokens -- the ntokens of the list
+   @return: the head of the list, every node of the list represents one command
+ */
 struct list_head* parser(char** arg, int ntokens)
 {
 	int i;
@@ -219,19 +246,19 @@ struct list_head* parser(char** arg, int ntokens)
 		}
 		pos++;
 	}
-	free_memory(arg, ntokens);
+	free_string(arg, ntokens);
 	return head;
 }
 
 
-/* exec_cmd()
+/* exec_singlecmd()
    @params: path -- the path of the command 
    arg -- the arguments of the command
    ntokens -- the number of the tokens in arg (actually length(arg) == ntokens+1,
    because the last token is always set to NULL)
    @return: void
  */
-void exec_cmd(char** arg, int ntokens)
+void exec_singlecmd(char** arg, int ntokens)
 {
 	/*int i;
 	  for (i = 0 ; i < ntokens; i++)
@@ -248,14 +275,18 @@ void exec_cmd(char** arg, int ntokens)
 			//printf("error:%s\n", strerror(errno));
 			perror("error");
 		// free
-		free_memory(arg, ntokens);
+		free_string(arg, ntokens);
 		exit(0);
 	}
 	// wait until the child process return
 	wait(NULL);
 }
 
-void exec_cmd2(struct list_head *head)
+/* exec_multicmd()
+   @params: head -- the head of the list, every node in the list represent a command
+   @return: void
+ */
+void exec_multicmd(struct list_head *head)
 {
 	int forkstatus = 1;
 	int i;
@@ -331,11 +362,6 @@ void exec_cmd2(struct list_head *head)
 				exit(-1);
 			}
 		}
-		else
-		{
-			// free
-			free_memory(node->arg,node->ntokens);
-		}
 		idx++;
 	}
 	
@@ -368,10 +394,11 @@ int main(int argc, char** argv)
 		if (line_read && *line_read)
 		{
 			arg = lexer(line_read, &ntokens);
-			//exec_cmd(arg, ntokens);
+			//exec_singlecmd(arg, ntokens);
 			//log_debug("arg : %p\n", arg);
 			head = parser(arg, ntokens);
-			exec_cmd2(head);
+			exec_multicmd(head);
+			free_list(head);
 		}
 	}
 	return 0;
