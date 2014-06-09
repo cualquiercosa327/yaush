@@ -4,4 +4,27 @@
         (1) ls(space)(space)-l: pay attention to the multi-space between two tokens
         (2) ls -l(space): eliminate the redutant space at the end of the space. or it will affect the result.
 
+2014-06-09 13:00
+	(1) fix some bugs in lexer()
+	(2) implement the parser() function to seperate the tokens by the '|' '>' or '<'
+	(3) implement another exec_cmd() function to be compatible with parser
+	(4) already done:
+ 		(a) readline, history, tab completion
+		(b) execute an command
 
+2014-06-09 15:30
+	(1) fix some bugs in parser()
+	(2) complete the exec_cmd2()
+	(3) already done:
+ 		(a) readline, history, tab completion
+		(b) execute an command
+		(c) pipe, input and  outpue redirection
+
+2014-06-10 00:20
+	(1) shortcut Ctrl-C: catch this signal and reset the current input line, avoid killing the program
+	(2) custom command: about, cd, exit
+	(3) already done:
+ 		(a) readline, history, tab completion
+		(b) execute an command, including some several command
+		(c) pipe, input and  outpue redirection
+		(d) set up the basic framework of shortcut, and have handled the Ctrl-C shortcut
