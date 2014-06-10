@@ -9,14 +9,14 @@
 #include <sys/wait.h>
 
 #include "log_debug.h"
-#include "list.h"
+//#include "list.h"
 #include "shortcut_signal.h"
 #include "custom_command.h"
 
 #define STRLEN	255
 // A static variable for holding the line.
 char *line_read = (char *)NULL;
-struct list_head* pid_list;
+//struct list_head* pid_list;
 
 struct node_cmd 
 {
@@ -28,11 +28,6 @@ struct node_cmd
 	int background;		// run in background (1) or not (0)
 };
 
-struct node_process
-{
-	int pid;
-	struct list_head list;
-};
 
 // Read a string, and return a pointer to it.
 // Returns NULL on EOF.
@@ -131,8 +126,8 @@ char** lexer(char* line_read, int* _ntokens)
 
 /* free_string()
  * @params: arg -- the pointer of the string list
-	    ntokens -- the number of string in the list
-   @return: void
+ ntokens -- the number of string in the list
+ @return: void
  */
 void free_string(char** arg, int ntokens)
 {
@@ -168,8 +163,8 @@ void free_list(struct list_head *head)
 
 /* parser()
  * @params: arg -- arguments list
-	    ntokens -- the ntokens of the list
-   @return: the head of the list, every node of the list represents one command
+ ntokens -- the ntokens of the list
+ @return: the head of the list, every node of the list represents one command
  */
 struct list_head* parser(char** arg, int ntokens)
 {
@@ -334,23 +329,54 @@ void exec_multicmd(struct list_head *head)
 			int flag= pipe(fd[i]);
 			log_debug("pipe return:%d\n",flag);
 			log_debug("fd[%d]:%d %d\n", i, fd[i][0], fd[i][1]);
-			
+
 		}
 	}
 	int idx = 0;
+	int cust = 0;
+	int ret;
 	// loop for every command
 	list_for_each(plist, head)
 	{
 		struct node_cmd *node = list_entry(plist, struct node_cmd, list);	
 		//log_debug("tokens:%d\n", node->ntokens);
-	  	for (i = 0 ; i < node->ntokens; i++)
+		for (i = 0 ; i < node->ntokens; i++)
 		{
 			log_debug("%p %s %s %s %d\n", node, node->arg[i], node->in, node->out, node->background);
 		}
-		
-		int ret = execute_cust_cmd(node->arg[0], node->arg);
-		if (ret == 1)
+
+		cust = execute_cust_cmd(node->arg[0], node->arg);
+		log_debug("execute_cust_cmd return %d\n", cust);
+		if (cust == 0)
 			continue;
+		else if (cust > 0)
+		{
+			// fg
+			if (strcmp(node->arg[0],"fg") == 0)
+			{
+				struct node_process *node = (struct node_process*)malloc(sizeof(struct node_process));
+				node->pid = cust;
+				list_add(&node->list, pid_list);
+				break;
+			}
+			// bg
+			else
+			{
+				struct list_head *plist, *n;
+				list_for_each_safe(plist, n, jobs_list)
+				{
+					struct node_process *node = list_entry(plist, struct node_process, list);
+					if (node->pid == cust)
+					{
+						node->pstatus = Running;
+						kill(node->pid, SIGCONT);
+						break;
+					}
+				}
+				background = 1;
+				break;
+			}
+		}
 		// fork to execute the command
 		forkstatus = fork();
 		if (forkstatus == 0)
@@ -369,7 +395,7 @@ void exec_multicmd(struct list_head *head)
 				dup2(fp, STDIN_FILENO);
 			}
 			//log_debug("%p input:%d\n", node, STDIN_FILENO);
-			
+
 			// output
 			if (strcmp(node->out, "next") == 0)
 			{
@@ -384,9 +410,9 @@ void exec_multicmd(struct list_head *head)
 				dup2(fp, STDOUT_FILENO);
 			}
 			log_debug("%s pid: %d\n", node->arg[0], getpid());
-		        //execvp() search $PATH to locate the bin file
+			//execvp() search $PATH to locate the bin file
 			ret = execvp(node->arg[0], node->arg);
-			
+
 			// print the error message
 			if (ret < 0)
 			{
@@ -400,14 +426,23 @@ void exec_multicmd(struct list_head *head)
 		{
 			struct node_process *node = (struct node_process*)malloc(sizeof(struct node_process));
 			node->pid = forkstatus;
+			node->pstatus = Running;
 			log_debug("pid %d inqueue\n", forkstatus);
 			list_add(&node->list, pid_list);
 		}
+		// in parent process: add background process into the jobs list
+		else
+		{
+			struct node_process *node = (struct node_process*)malloc(sizeof(struct node_process));
+			node->pid = forkstatus;
+			node->pstatus = Running;
+			list_add(&node->list, jobs_list);
+		}
 		idx++;
 	}
-	
+
 	// wait until the child process return
-	if (forkstatus > 0)
+	if (forkstatus > 0 && cust != 0)
 	{
 		// close the pipe in the parent process
 		for (i = 0; i < pnum-1; i++)
@@ -418,26 +453,36 @@ void exec_multicmd(struct list_head *head)
 		// wait until all the process return
 		if (background == 0)
 		{
-			i = 0;
 			// wait the process in the pid_list
-			while (i < pnum)
+			while (!list_empty(pid_list))
 			{
 				int ret = wait(NULL);
-				struct list_head *plist;
-				list_for_each(plist, pid_list)
+				struct list_head *plist, *n;
+				// search the pid:ret
+				list_for_each_safe(plist, n, pid_list)
 				{
 					struct node_process *node = list_entry(plist, struct node_process, list);
 					if (node->pid == ret)
 					{
 						log_debug("wait %d return %d %d\n", i, ret, node->pid);
-						i++;
 						// delete this node
 						list_del(&node->list);
 						break;
 					}
 				}
+				// update the jobs_list
+				list_for_each(plist, jobs_list)
+				{
+					struct node_process *node = list_entry(plist, struct node_process, list);
+					if (node->pid == ret)
+					{
+						node->pstatus = Done;
+						break;
+					}
+				}
 			}
-		}	
+		}
+
 	}
 }
 
@@ -447,20 +492,78 @@ int main(int argc, char** argv)
 	char** arg = NULL;
 	int ntokens = 0;
 	struct list_head *head;
+	struct list_head *plist, *n;
+	// init list head for jobs_list
+	jobs_list = (struct list_head*)malloc(sizeof(struct list_head));
+	INIT_LIST_HEAD(jobs_list);
 	// init list head for pid_list
 	pid_list = (struct list_head*)malloc(sizeof(struct list_head));
 	INIT_LIST_HEAD(pid_list);
-	// signal
-	if (signal(SIGINT, handle_signals) == SIG_ERR) 
+	// signal - Ctrl-C
+	struct sigaction act;
+	sigfillset(&(act.sa_mask));
+	act.sa_flags = SA_SIGINFO;
+	act.sa_handler = handle_signals_ctrl_c;
+	if (sigaction(SIGINT, &act, NULL) < 0) 
 	{
-    		printf("failed to register interrupts with kernel\n");
-  	}
-	while ( sigsetjmp( ctrlc_buf, 1 ) != 0 );
+		printf("failed to register interrupts with kernel\n");
+	}
+	// signal - Ctrl-Z
+	struct sigaction act_z;
+	sigfillset(&(act_z.sa_mask));
+	act_z.sa_flags = SA_SIGINFO;
+	act_z.sa_handler = handle_signals_ctrl_z;
+	if (sigaction(SIGTSTP, &act_z, NULL) < 0) 
+	{
+		printf("failed to register interrupts with kernel\n");
+	}
+	// sigsetjmp
+	if ( sigsetjmp( ctrlc_buf, 1 ) != 0 )
+	{
+		;
+	}
+	if ( sigsetjmp( ctrlz_buf, 1 ) != 0 )
+	{
+		log_debug("ctrlz sigsetjmp\n");
+		struct list_head *plist, *n;
+		// move the list in pid_list to jobs_list
+		list_for_each_safe(plist, n, pid_list)
+		{
+			struct node_process *node = list_entry(plist, struct node_process, list);
+			log_debug("pid:%d pstatus:%d\n", node->pid, node->pstatus);
+			struct node_process *newnode = (struct node_process*)malloc(sizeof(struct node_process));
+			newnode->pstatus = Stopped;
+			newnode->pid = node->pid;
+			list_add(&newnode->list, jobs_list);
+			list_del(&node->list);
+		}
+		log_debug("jobs_list empty:%d\n", list_empty(jobs_list));
+	}
+	// loop
 	while(1)
 	{
 		arg = NULL;
 		ntokens = 0;
+		// readline 
 		line_read = rl_gets();
+		// print the jobs that were done
+		int i = 0;
+		int ret;
+		list_for_each_safe(plist, n, jobs_list)
+		{
+			struct node_process *node = list_entry(plist, struct node_process, list);
+			ret = waitpid(node->pid, NULL, WNOHANG);
+			if (ret == -1)
+				node->pstatus = Done;
+			if (node->pstatus == Done)
+			{
+				printf("[%d]\tpid:%d\t%s\n", i, node->pid, process_status_str[node->pstatus]);
+				// delete this node
+				list_del(&node->list);
+			}
+			i++;
+		}
+		// handle the input 
 		if (line_read && *line_read)
 		{
 			arg = lexer(line_read, &ntokens);
@@ -471,5 +574,7 @@ int main(int argc, char** argv)
 			free_list(head);
 		}
 	}
+	//free(pid_list);
+	//pid_list = NULL;
 	return 0;
 }
