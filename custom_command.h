@@ -4,10 +4,13 @@
 #include <unistd.h>
 
 #include "list.h"
+#include "bitmap.h"
 
 #define MAX_CUST_CMD 32
 #define CUST_CMD_NAME_LEN 32
 #define WHY_STR_NUM 8
+//#define DEFAULT_IMAGE_NAME "./images/lena64.bmp"
+#define DEFAULT_IMAGE_NAME "./images/Jobs.bmp"
 
 enum process_status
 {
@@ -188,7 +191,36 @@ int yaush_bg(char* cmd, char** arg)
  */
 int yaush_image(char* cmd, char** arg)
 {
-	printf("coming soon!\n");
+	//int ret;
+	// just the command 'cd' without any parameters
+	// then change the current dir to home
+	char path[255];
+	if (arg[1] == NULL)
+		strcpy(path, DEFAULT_IMAGE_NAME);
+	else
+		strcpy(path, arg[1]);
+	U8 bitCountPerPix;  
+	U32 width, height;  
+	U8 *pdata = GetBmpData(&bitCountPerPix, &width, &height, path);
+ 	U8 BytePerPix = (bitCountPerPix) >> 3;
+	U32 pitch = (width) * BytePerPix;
+  
+	if(pdata)  
+	{
+		int w, h;  
+		for(h = 0; h < height;  h++)  
+		{  
+			for(w = 0; w < (width); w++)  
+			{  
+				int g = getGray(pdata[h*pitch + w*BytePerPix + 0], pdata[h*pitch + w*BytePerPix + 1], pdata[h*pitch + w*BytePerPix + 2]); 
+				printf("%c ", toText(g)); 
+			} 
+			printf("\n");
+		}  
+	}
+	//printf("%d %d %d\n", width, height, BytePerPix);	
+	//if (ret < 0)
+	//	perror("cd");
 	return 0;
 }
 
