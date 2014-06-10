@@ -28,3 +28,16 @@
 		(b) execute an command, including some several command
 		(c) pipe, input and  outpue redirection
 		(d) set up the basic framework of shortcut, and have handled the Ctrl-C shortcut
+
+2014-06-10 14:00
+	(1) fix some bugs in the exec_multicmd(); the return value of wait(NULL) must be one of the fork process.
+	    just a for loop would result bugs.
+	(2) background process:
+	    'cmdname' &
+	    & means the parent will not wait for this process to return. So we can execute a new command while the background process still running
+	(3) already done:
+ 		(a) readline, history, tab completion
+		(b) execute an command, including some several command
+		(c) pipe, input and  outpue redirection
+		(d) set up the basic framework of shortcut, and have handled the Ctrl-C shortcut
+		(e) background process.

@@ -5,15 +5,27 @@
 
 #define MAX_CUST_CMD 32
 #define CUST_CMD_NAME_LEN 32
+#define WHY_STR_NUM 8
 
 // function declaration
 void yaush_cd(char* cmd, char** arg);
 void yaush_exit(char* cmd, char** arg);
 void yaush_about(char* cmd, char** arg);
+void yaush_why(char* cmd, char** arg);
 
 // variables
-char cmd_list[MAX_CUST_CMD][CUST_CMD_NAME_LEN] = {"cd", "exit", "about"};
-void (*f[MAX_CUST_CMD])(char*, char**) = {yaush_cd, yaush_exit, yaush_about};
+char cmd_list[MAX_CUST_CMD][CUST_CMD_NAME_LEN] = {"cd", "exit", "about", "why"};
+void (*f[MAX_CUST_CMD])(char*, char**) = {yaush_cd, yaush_exit, yaush_about, yaush_why};
+
+
+char why_str[WHY_STR_NUM][255] = {
+"I don't know why, my teacher o f C/UNIX course tell me to do so",
+"Don't ask!",
+"You know why.",
+"Because I'm a bad programmer.",
+"My TA and teacher assign too much homwork for me",
+"I'm crazy"
+};
 
  
 /* yaush_cd(): change the current working directory
@@ -53,6 +65,12 @@ void yaush_about(char* cmd, char** arg)
 	printf("--github: https://github.com/FromHJ/yaush.git\n");
 	printf("--2014-06\n");
 	printf("---------------------------------------------------\n");
+}
+
+void yaush_why(char* cmd, char** arg)
+{
+	int idx = rand() % WHY_STR_NUM;
+	printf("%s\n", why_str[idx]);		
 }
 
 int execute_cust_cmd(char* cmd, char** arg)

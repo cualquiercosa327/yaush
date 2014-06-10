@@ -16,16 +16,23 @@
 #define STRLEN	255
 // A static variable for holding the line.
 char *line_read = (char *)NULL;
+struct list_head* pid_list;
 
-
-struct node_cmd {
+struct node_cmd 
+{
 	char** arg;		// the arguments list of the command
 	int ntokens;
 	char out[255];		// the output : "stdout" "next" "filename"
 	char in[255];		// the input :  "stdin"  "prev" "filename"
 	struct list_head list;
+	int background;		// run in background (1) or not (0)
 };
 
+struct node_process
+{
+	int pid;
+	struct list_head list;
+};
 
 // Read a string, and return a pointer to it.
 // Returns NULL on EOF.
@@ -182,17 +189,21 @@ struct list_head* parser(char** arg, int ntokens)
 		//}
 		log_debug("%s\n", arg[pos]);
 		// find the position of pipes - '|' 
-		if (arg[pos] == NULL || strcmp(arg[pos], "|") == 0)
+		if (arg[pos] == NULL || strcmp(arg[pos], "|") == 0 || strcmp(arg[pos], "&") == 0)
 		{
 			// if this is the last token
 			//if (pos == ntokens - 1)
 			//	pos += 1;
 			// malloc for node
 			struct node_cmd *node = (struct node_cmd*)malloc(sizeof(struct node_cmd));
+			node->background = 0;
+			// output redirection
+			strcpy(node->out, "next");
 			if (arg[pos] == NULL)
 				strcpy(node->out, "stdout");
-			else
-				strcpy(node->out, "next");
+			else if (pos+1 < ntokens &&  strcmp(arg[pos], "&") == 0 && arg[pos+1] == NULL)
+				strcpy(node->out, "stdout");
+			// input redirection
 			if (prevpos == 0)
 				strcpy(node->in , "stdin");
 			else
@@ -241,9 +252,15 @@ struct list_head* parser(char** arg, int ntokens)
 				cmdarg[i] = NULL;
 			}
 			prevpos = pos+1;
+			// are these commands running in background or not
+			// only if the '&' appear in the end of the command, it takes effect.
+			if (pos+1 < ntokens && arg[pos] != NULL && strcmp(arg[pos], "&") == 0  && arg[pos+1] == NULL)
+				node->background = 1;
 			// add this node to the list
 			list_add(&node->list, head);
 			if (arg[pos] == NULL)
+				break;
+			if (pos+1 < ntokens && arg[pos] != NULL && strcmp(arg[pos], "&") == 0 && arg[pos+1] == NULL)
 				break;
 		}
 		pos++;
@@ -293,10 +310,19 @@ void exec_multicmd(struct list_head *head)
 	int forkstatus = 1;
 	int i;
 	int pnum = 0;
+	int background = 0;
 	struct list_head *plist;
 	// count the number of the command
 	list_for_each(plist, head)
+	{
+		struct node_cmd *node = list_entry(plist, struct node_cmd, list);	
+		if (pnum == 0 && node->background == 1)
+		{
+			background = 1;
+		}
 		pnum++;
+	}
+	log_debug("background:%d\n", background);
 	// pipe descriptor
 	int **fd = NULL;
 	if (pnum > 1)
@@ -319,7 +345,7 @@ void exec_multicmd(struct list_head *head)
 		//log_debug("tokens:%d\n", node->ntokens);
 	  	for (i = 0 ; i < node->ntokens; i++)
 		{
-			log_debug("%p %s %s %s\n", node, node->arg[i], node->in, node->out);
+			log_debug("%p %s %s %s %d\n", node, node->arg[i], node->in, node->out, node->background);
 		}
 		
 		int ret = execute_cust_cmd(node->arg[0], node->arg);
@@ -342,7 +368,7 @@ void exec_multicmd(struct list_head *head)
 				int fp = open(node->in, O_RDONLY);
 				dup2(fp, STDIN_FILENO);
 			}
-			log_debug("%p input:%d\n", node, STDIN_FILENO);
+			//log_debug("%p input:%d\n", node, STDIN_FILENO);
 			
 			// output
 			if (strcmp(node->out, "next") == 0)
@@ -357,6 +383,7 @@ void exec_multicmd(struct list_head *head)
 				int fp = open(node->out, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 				dup2(fp, STDOUT_FILENO);
 			}
+			log_debug("%s pid: %d\n", node->arg[0], getpid());
 		        //execvp() search $PATH to locate the bin file
 			ret = execvp(node->arg[0], node->arg);
 			
@@ -367,6 +394,14 @@ void exec_multicmd(struct list_head *head)
 				printf("%s:%s\n", node->arg[0], strerror(errno));
 				exit(-1);
 			}
+		}
+		// in parent process: put every pid of non-background process into the list
+		else if (background == 0)
+		{
+			struct node_process *node = (struct node_process*)malloc(sizeof(struct node_process));
+			node->pid = forkstatus;
+			log_debug("pid %d inqueue\n", forkstatus);
+			list_add(&node->list, pid_list);
 		}
 		idx++;
 	}
@@ -381,8 +416,28 @@ void exec_multicmd(struct list_head *head)
 			close(fd[i][1]);
 		}
 		// wait until all the process return
-		for (i = 0; i < pnum; i++)
-			wait(NULL);	
+		if (background == 0)
+		{
+			i = 0;
+			// wait the process in the pid_list
+			while (i < pnum)
+			{
+				int ret = wait(NULL);
+				struct list_head *plist;
+				list_for_each(plist, pid_list)
+				{
+					struct node_process *node = list_entry(plist, struct node_process, list);
+					if (node->pid == ret)
+					{
+						log_debug("wait %d return %d %d\n", i, ret, node->pid);
+						i++;
+						// delete this node
+						list_del(&node->list);
+						break;
+					}
+				}
+			}
+		}	
 	}
 }
 
@@ -392,6 +447,10 @@ int main(int argc, char** argv)
 	char** arg = NULL;
 	int ntokens = 0;
 	struct list_head *head;
+	// init list head for pid_list
+	pid_list = (struct list_head*)malloc(sizeof(struct list_head));
+	INIT_LIST_HEAD(pid_list);
+	// signal
 	if (signal(SIGINT, handle_signals) == SIG_ERR) 
 	{
     		printf("failed to register interrupts with kernel\n");
