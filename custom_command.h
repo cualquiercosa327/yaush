@@ -8,7 +8,7 @@
 
 #define MAX_CUST_CMD 32
 #define CUST_CMD_NAME_LEN 32
-#define WHY_STR_NUM 8
+#define WHY_STR_NUM 10
 //#define DEFAULT_IMAGE_NAME "./images/lena64.bmp"
 #define DEFAULT_IMAGE_NAME "./images/Jobs.bmp"
 
@@ -54,7 +54,11 @@ char why_str[WHY_STR_NUM][255] = {
 	"You know why.",
 	"Because I'm a bad programmer.",
 	"My TA and teacher assign too much homwork for me",
-	"I'm crazy"
+	"I'm crazy",
+	"Oh no, too much howework for me!",
+	"Go to the website https://github.com/FromHJ/yaush.git, and you will know why",
+	"I'm just a stupid shell, why do you keep asking me why!",
+	"type command: image, and there is a surprise"
 };
 
 

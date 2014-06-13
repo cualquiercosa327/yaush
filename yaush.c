@@ -249,7 +249,7 @@ struct list_head* parser(char** arg, int ntokens)
 			prevpos = pos+1;
 			// are these commands running in background or not
 			// only if the '&' appear in the end of the command, it takes effect.
-			if (pos+1 < ntokens && arg[pos] != NULL && strcmp(arg[pos], "&") == 0  && arg[pos+1] == NULL)
+			if (pos+1 < ntokens && arg[pos] != NULL && strcmp(arg[pos], "&") == 0 )// )// )// )// )// )// )//  && arg[pos+1] == NULL)
 				node->background = 1;
 			// add this node to the list
 			list_add(&node->list, head);
@@ -354,9 +354,21 @@ void exec_multicmd(struct list_head *head)
 			// fg
 			if (strcmp(node->arg[0],"fg") == 0)
 			{
+				// add it to the pid_list
 				struct node_process *node = (struct node_process*)malloc(sizeof(struct node_process));
 				node->pid = cust;
 				list_add(&node->list, pid_list);
+				// and remove from the jobs_list;
+				struct list_head *plist, *n;
+				list_for_each_safe(plist, n, jobs_list)
+				{
+					struct node_process *node = list_entry(plist, struct node_process, list);
+					if (node->pid == cust)
+					{
+						list_del(&node->list);
+						break;
+					}
+				}
 				break;
 			}
 			// bg

@@ -62,3 +62,6 @@
 		(d) set up the basic framework of shortcut, and have handled the Ctrl-C shortcut
 		(e) background process.
 		(f) jobs, fg, bg
+
+2014-06-13 23:10
+	(1) fix some bugs in fg command
