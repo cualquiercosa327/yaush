@@ -1,4 +1,5 @@
 CFILES = $(wildcard *.c)
+CHEADERS = $(wildcard *.h)
 OBJECTS = $(patsubst %c, %o, $(CFILES))
 TARGETS = yaush 
 CC = gcc
@@ -10,7 +11,7 @@ all: $(TARGETS)
 $(TARGETS): $(OBJECTS)
 	$(CC) $(OBJECTS) $(CFLAGS) -o $@
 	
-$(OBJECTS): $(CFILES)
+$(OBJECTS): $(CFILES) $(CHEADERS)
 	$(CC) $(@:.o=.c) $(CFLAGS) -c
 
 clean: $(TARGETS) $(OBJECTS)

@@ -65,3 +65,7 @@
 
 2014-06-13 23:10
 	(1) fix some bugs in fg command
+
+2014-06-14 11:50
+	(1) fix some bugs in log_debug.h: printf -> fprintf(stdout,..)
+	(2) fix the pipe closing problem: now ls | wc | wc works fine.

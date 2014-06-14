@@ -112,6 +112,7 @@ int yaush_about(char* cmd, char** arg)
  */
 int yaush_why(char* cmd, char** arg)
 {
+	srand(getpid());
 	int idx = rand() % WHY_STR_NUM;
 	printf("%s\n", why_str[idx]);	
 	return 0;

@@ -398,8 +398,6 @@ void exec_multicmd(struct list_head *head)
 			{
 				close(STDIN_FILENO);
 				dup2(fd[idx][0], STDIN_FILENO);
-				close(fd[idx][1]);
-				close(fd[idx][0]);
 			}
 			else if(strcmp(node->in, "stdin") != 0)
 			{
@@ -413,13 +411,18 @@ void exec_multicmd(struct list_head *head)
 			{
 				close(STDOUT_FILENO);
 				dup2(fd[idx-1][1], STDOUT_FILENO);
-				close(fd[idx-1][0]);
-				close(fd[idx-1][1]);
 			}
 			else if(strcmp(node->out, "stdout") != 0)
 			{
 				int fp = open(node->out, O_WRONLY | O_CREAT | O_TRUNC, 0600);
 				dup2(fp, STDOUT_FILENO);
+			}
+
+
+			for (i = 0; i < pnum-1; i++)
+			{
+				close(fd[i][1]);
+				close(fd[i][0]);
 			}
 			log_debug("%s pid: %d\n", node->arg[0], getpid());
 			//execvp() search $PATH to locate the bin file
@@ -429,7 +432,7 @@ void exec_multicmd(struct list_head *head)
 			if (ret < 0)
 			{
 				//printf("error:%s\n", strerror(errno));
-				printf("%s:%s\n", node->arg[0], strerror(errno));
+				fprintf(stderr, "%s:%s\n", node->arg[0], strerror(errno));
 				exit(-1);
 			}
 		}
