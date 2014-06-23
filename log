@@ -69,3 +69,9 @@
 2014-06-14 11:50
 	(1) fix some bugs in log_debug.h: printf -> fprintf(stdout,..)
 	(2) fix the pipe closing problem: now ls | wc | wc works fine.
+
+2014-06-23 11:00
+	(1) add some lines in lexer() to cope with the filename containing whitespace
+	    eg. vim ha\ ha.txt
+            use the \ to declare the whitespace
+            but the tab completion won't add te \ automatically.

@@ -70,7 +70,11 @@ char** lexer(char* line_read, int* _ntokens)
 	{
 		//log_debug("%d%c" ,strlen(line_read), line_read[i]);
 		if (line_read[i] == delim)
+		{
+			if (i > 0 && line_read[i-1] == '\\')
+				continue;	
 			nspace++;
+		}
 	}
 	//log_debug("%s %d\n", line_read, nspace);
 	// tokens = #space + 1; and the additional one is set as NULL to label the end
@@ -90,7 +94,10 @@ char** lexer(char* line_read, int* _ntokens)
 	int count = 0;
 	while (offset < strlen(line_read))
 	{
-		pstr = strchr(line_read + offset, delim);
+		if (offset == 0 && pos == 0)
+			pstr = strchr(line_read + offset, delim);
+		else
+			pstr = strchr(line_read + pos + 1, delim);
 		if (pstr == NULL)
 			pos = strlen(line_read);
 		else
@@ -98,11 +105,27 @@ char** lexer(char* line_read, int* _ntokens)
 			pos = strlen(line_read) - strlen(pstr);
 			//log_debug("%s\n", pstr);
 		}
+		// "\ " means a whitespace in the filename
+		if (pos > 0 && line_read[pos-1] == '\\')
+		{	
+			//offset = pos+1;
+			continue;
+		}
+
 		//log_debug("%d %d\n", offset, pos);
 		if (pos > offset)
 		{
 			strncpy(arg[count], line_read + offset, pos - offset);
 			arg[count][pos-offset] = '\0';
+			// elimate the "\"
+			char* ptmp = strchr(arg[count], '\\');
+			if (ptmp != NULL)
+			{
+				int postmp = strlen(arg[count]) - strlen(ptmp);
+				int i;
+				for(i = postmp; i < strlen(arg[count]); i++)
+					arg[count][i] = arg[count][i+1]; 	
+			}
 		}
 		else    // this is a 'space', so skip this string
 		{
